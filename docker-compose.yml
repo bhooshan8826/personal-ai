@@ -1,0 +1,84 @@
+version: '3.9'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: personal_ai_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=development
+      - DATABASE_URL=sqlite:///./data/app.db
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - DEBUG=true
+    volumes:
+      - ./backend:/app/backend
+      - ./data:/app/data
+    depends_on:
+      - ollama
+    command: uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - personal_ai
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    container_name: personal_ai_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    command: npm run dev
+    networks:
+      - personal_ai
+
+  # Ollama (LLM Service)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: personal_ai_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_NUM_THREAD=8
+    networks:
+      - personal_ai
+    # Pre-load Llama 3 model on startup
+    command: >
+      sh -c 'ollama serve &
+             sleep 5
+             ollama pull llama3
+             wait'
+
+  # Chroma Vector Database
+  chroma:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: personal_ai_chroma
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/data
+    environment:
+      - IS_PERSISTENT=TRUE
+    networks:
+      - personal_ai
+
+networks:
+  personal_ai:
+    driver: bridge
+
+volumes:
+  ollama_data:
+  chroma_data:
